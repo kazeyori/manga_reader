@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>漫画阅读器</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+        #controls {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        #controls button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+        }
+        #comic-container {
+            max-width: 800px;
+            margin: 60px auto 0;
+            padding: 20px;
+        }
+        #comic-container img {
+            width: 100%;
+            height: auto;
+            display: block;
+            margin-bottom: 10px;
+        }
+        .page-mode #comic-container img {
+            display: none;
+        }
+        .page-mode #comic-container img.active {
+            display: block;
+        }
+        .page-controls {
+            display: none;
+        }
+        .page-mode .page-controls {
+            display: inline-block;
+        }
+        .folder-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 20px;
+            padding: 20px;
+        }
+        .folder-item {
+            text-align: center;
+            cursor: pointer;
+        }
+        .folder-item img {
+            width: 100%;
+            height: 280px;
+            object-fit: cover;
+            border-radius: 5px;
+        }
+        .folder-item p {
+            margin-top: 10px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <button id="prev-comic">上一部漫画</button>
+        <button id="prev-page" class="page-controls">上一页</button>
+        <button id="reading-mode">切换阅读模式</button>
+        <button id="next-page" class="page-controls">下一页</button>
+        <button id="next-comic">下一部漫画</button>
+        <button id="parent-folder">返回上一页</button>
+        <button id="home">回到首页</button>
+    </div>
+    <div id="comic-container">
+        <!-- 这里将通过JavaScript动态填充漫画图片或子文件夹 -->
+    </div>
+
+    <script>
+        const comicId = decodeURIComponent(window.location.pathname.split('/').pop());
+        let currentPage = 0;
+        let isPageMode = false;
+        let comicData = null;
+
+        function loadComic() {
+            const comicId = decodeURIComponent(window.location.pathname.split('/').pop());
+            const apiUrl = isNaN(comicId) ? `/comic/${encodeURIComponent(comicId)}` : `/comic/${comicId}`;
+            
+            console.log('Loading comic from:', apiUrl);  // 添加这行日志
+
+            fetch(apiUrl)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Received comic data:', data);  // 添加这行日志
+                    comicData = data;
+                    const comicContainer = document.getElementById('comic-container');
+                    comicContainer.innerHTML = ''; // 清空容器
+                    
+                    if (data.contents && data.contents.some(item => item.type === 'folder')) {
+                        // 如果包含文件夹，显示为网格布局
+                        comicContainer.className = 'folder-grid';
+                        data.contents.forEach((item, index) => {
+                            if (item.type === 'folder') {
+                                const folderElement = document.createElement('div');
+                                folderElement.className = 'folder-item';
+                                folderElement.onclick = function() {
+                                    window.location.href = `/reader/${item.id}`;
+                                };
+
+                                const thumbnailElement = document.createElement('img');
+                                thumbnailElement.src = item.thumbnail || '/static/default-thumbnail.png';
+                                thumbnailElement.alt = item.name;
+                                thumbnailElement.onerror = function() {
+                                    this.onerror = null; // 防止无限循环
+                                    this.src = '/static/default-thumbnail.png';
+                                };
+
+                                const nameElement = document.createElement('p');
+                                nameElement.textContent = item.name;
+
+                                folderElement.appendChild(thumbnailElement);
+                                folderElement.appendChild(nameElement);
+                                comicContainer.appendChild(folderElement);
+                            }
+                        });
+                    } else {
+                        // 如果只包含图片，显示为阅读器模式
+                        comicContainer.className = '';
+                        data.contents.forEach((item, index) => {
+                            if (item.type === 'image') {
+                                const img = document.createElement('img');
+                                img.src = item.path;
+                                img.alt = `Comic page ${index + 1}`;
+                                img.dataset.index = index;
+                                comicContainer.appendChild(img);
+                            }
+                        });
+                    }
+                    updatePageMode();
+                    updateParentFolderButton();
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    const comicContainer = document.getElementById('comic-container');
+                    comicContainer.innerHTML = `<p>Error loading comic: ${error.message}</p>`;
+                });
+        }
+
+        function updateParentFolderButton() {
+            const parentFolderButton = document.getElementById('parent-folder');
+            if (comicData && comicData.parent_id) {
+                parentFolderButton.style.display = 'inline-block';
+                parentFolderButton.onclick = function() {
+                    window.location.href = `/reader/${comicData.parent_id}`;
+                };
+            } else {
+                parentFolderButton.style.display = 'none';
+            }
+        }
+
+        function updatePageMode() {
+            const images = document.querySelectorAll('#comic-container img');
+            const pageControls = document.querySelectorAll('.page-controls');
+            if (isPageMode) {
+                document.body.classList.add('page-mode');
+                images.forEach((img, index) => {
+                    img.classList.toggle('active', index === currentPage);
+                });
+                pageControls.forEach(control => control.style.display = 'inline-block');
+                updatePageControls();
+            } else {
+                document.body.classList.remove('page-mode');
+                images.forEach(img => img.classList.remove('active'));
+                pageControls.forEach(control => control.style.display = 'none');
+            }
+        }
+
+        function updatePageControls() {
+            const images = document.querySelectorAll('#comic-container img');
+            document.getElementById('prev-page').disabled = currentPage === 0;
+            document.getElementById('next-page').disabled = currentPage === images.length - 1;
+        }
+
+        document.getElementById('reading-mode').addEventListener('click', () => {
+            isPageMode = !isPageMode;
+            currentPage = 0;
+            updatePageMode();
+        });
+
+        document.getElementById('prev-comic').addEventListener('click', () => {
+            if (comicData && comicData.prev_comic) {
+                window.location.href = `/reader/${comicData.prev_comic}`;
+            }
+        });
+
+        document.getElementById('next-comic').addEventListener('click', () => {
+            if (comicData && comicData.next_comic) {
+                window.location.href = `/reader/${comicData.next_comic}`;
+            }
+        });
+
+        document.getElementById('home').addEventListener('click', () => {
+            window.location.href = '/';
+        });
+
+        document.getElementById('prev-page').addEventListener('click', () => {
+            if (isPageMode && currentPage > 0) {
+                currentPage--;
+                updatePageMode();
+            }
+        });
+
+        document.getElementById('next-page').addEventListener('click', () => {
+            const images = document.querySelectorAll('#comic-container img');
+            if (isPageMode && currentPage < images.length - 1) {
+                currentPage++;
+                updatePageMode();
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (isPageMode) {
+                const images = document.querySelectorAll('#comic-container img');
+                if (e.key === 'ArrowRight' && currentPage < images.length - 1) {
+                    currentPage++;
+                    updatePageMode();
+                } else if (e.key === 'ArrowLeft' && currentPage > 0) {
+                    currentPage--;
+                    updatePageMode();
+                }
+            }
+        });
+
+        loadComic();
+    </script>
+</body>
+</html>

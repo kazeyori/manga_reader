@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理页面</title>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+</head>
+<body>
+    <h1>管理页面</h1>
+    
+    <!-- 添加资料库的表单 -->
+    <h2>添加新资料库</h2>
+    <form id="addLibraryForm">
+        <input type="text" id="libraryName" placeholder="资料库名称" required>
+        <input type="text" id="folderName" placeholder="文件夹名称" required>
+        <button type="submit">添加资料库</button>
+    </form>
+
+    <!-- 资料库列表 -->
+    <h2>资料库列表</h2>
+    <ul id="libraryList"></ul>
+
+    <script>
+        // 获取资料库列表
+        function getLibraries() {
+            axios.get('/admin/libraries')
+                .then(response => {
+                    const libraryList = document.getElementById('libraryList');
+                    libraryList.innerHTML = '';
+                    response.data.forEach(library => {
+                        const li = document.createElement('li');
+                        li.textContent = `${library.name} (${library.path})`;
+                        
+                        // 添加删除按钮
+                        const deleteButton = document.createElement('button');
+                        deleteButton.textContent = '删除';
+                        deleteButton.onclick = () => deleteLibrary(library.id);
+                        li.appendChild(deleteButton);
+                        
+                        libraryList.appendChild(li);
+                    });
+                })
+                .catch(error => console.error('获取资料库列表失败:', error));
+        }
+
+        // 删除资料库
+        function deleteLibrary(libraryId) {
+            if (confirm('确定要删除这个资料库吗？相关的所有漫画记录也会被删除。')) {
+                axios.delete(`/admin/delete_library/${libraryId}`)
+                    .then(response => {
+                        alert('资料库删除成功');
+                        getLibraries(); // 刷新列表
+                    })
+                    .catch(error => console.error('删除资料库失败:', error));
+            }
+        }
+
+        // 添加资料库
+        document.getElementById('addLibraryForm').onsubmit = function(e) {
+            e.preventDefault();
+            const name = document.getElementById('libraryName').value;
+            const folderName = document.getElementById('folderName').value;
+            axios.post('/admin/add_library', { name, folderName })
+                .then(response => {
+                    alert('资料库添加成功');
+                    getLibraries(); // 刷新列表
+                    this.reset(); // 重置表单
+                })
+                .catch(error => console.error('添加资料库失败:', error));
+        };
+
+        // 页面加载时获取资料库列表
+        getLibraries();
+    </script>
+</body>
+</html>

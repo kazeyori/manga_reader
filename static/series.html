@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>漫画列表</title>
+    <style>
+        .comic-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 20px;
+            padding: 20px;
+        }
+        .comic-item {
+            text-align: center;
+            cursor: pointer; /* 添加这行，使鼠标悬停时显示为可点击状态 */
+        }
+        .comic-item img {
+            width: 100%;
+            height: 280px;
+            object-fit: cover;
+            border-radius: 5px;
+        }
+        .comic-item p {
+            margin-top: 10px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <h1>漫画列表</h1>
+    <div id="comics-container" class="comic-grid">
+        <!-- 这里将通过JavaScript动态填充内容 -->
+    </div>
+
+    <script>
+        fetch('/comics')
+            .then(response => response.json())
+            .then(data => {
+                const comicsContainer = document.getElementById('comics-container');
+                data.comics.forEach(comic => {
+                    const comicElement = document.createElement('div');
+                    comicElement.className = 'comic-item';
+                    comicElement.onclick = function() {
+                        window.location.href = `/reader/${comic.id}`; // 添加点击事件处理器
+                    };
+
+                    const thumbnailElement = document.createElement('img');
+                    thumbnailElement.src = comic.thumbnail || '/static/default-thumbnail.png'; // 使用默认图片如果没有缩略图
+                    thumbnailElement.alt = comic.title;
+                    thumbnailElement.onerror = function() {
+                        this.src = '/static/default-thumbnail.png'; // 如果图片加载失败，使用默认图片
+                    };
+
+                    const titleElement = document.createElement('p');
+                    titleElement.textContent = comic.title;
+
+                    comicElement.appendChild(thumbnailElement);
+                    comicElement.appendChild(titleElement);
+                    comicsContainer.appendChild(comicElement);
+                });
+            })
+            .catch(error => console.error('Error:', error));
+    </script>
+</body>
+</html>
