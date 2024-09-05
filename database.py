@@ -1,6 +1,7 @@
 from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, Boolean
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, relationship
+from sqlalchemy.orm import sessionmaker, scoped_session, relationship
+from sqlalchemy.pool import StaticPool
 
 Base = declarative_base()
 
@@ -25,9 +26,16 @@ class Comic(Base):
     parent = relationship("Comic", remote_side=[id], back_populates="children")
     children = relationship("Comic", back_populates="parent")
 
-engine = create_engine('sqlite:///comics.db')
-Base.metadata.create_all(engine)
-SessionLocal = sessionmaker(bind=engine)
+SQLALCHEMY_DATABASE_URL = "sqlite:///./sql_app.db"
+
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL,
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+    echo=True  # 添加这行以输出 SQL 语句，方便调试
+)
+
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def get_db():
     db = SessionLocal()
@@ -38,3 +46,6 @@ def get_db():
 
 def get_comic(db: SessionLocal, comic_id: int):
     return db.query(Comic).filter(Comic.id == comic_id).first()
+
+# 确保在应用启动时创建所有表
+Base.metadata.create_all(bind=engine)
