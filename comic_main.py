@@ -366,6 +366,14 @@ def run_migration(engine):
 async def startup_event():
     global engine  # 确保我们使用的是全局的 engine 变量
     
+    # 检查并创建 comics 文件夹
+    comics_folder = os.path.join(os.path.dirname(__file__), "comics")
+    if not os.path.exists(comics_folder):
+        os.makedirs(comics_folder)
+        logger.info(f"Created comics folder: {comics_folder}")
+    else:
+        logger.info(f"Comics folder already exists: {comics_folder}")
+
     # 关闭所有现有的数据库连接
     engine.dispose()
     
