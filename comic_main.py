@@ -17,6 +17,8 @@ import rarfile
 from io import BytesIO
 from sqlalchemy import inspect, Boolean
 from sqlalchemy import text as sa_text
+import py7zr
+from py7zr import SevenZipFile
 
 app = FastAPI()
 logger = logging.getLogger("uvicorn.info")
@@ -258,6 +260,9 @@ def get_archive_contents(archive_path):
     elif archive_path.lower().endswith('.rar'):
         with rarfile.RarFile(archive_path, 'r') as rar_ref:
             return rar_ref.namelist()
+    elif archive_path.lower().endswith('.7z'):
+        with py7zr.SevenZipFile(archive_path, mode='r') as z:
+            return z.getnames()
     else:
         return []
 
@@ -267,17 +272,19 @@ async def get_comic_image(comic_id: int, image_path: str, db: Session = Depends(
     if not comic or not comic.is_archive:
         raise HTTPException(status_code=404, detail="Comic not found or not an archive")
 
+    logger.info(f"Attempting to read image {image_path} from archive {comic.path}")
     try:
         image_data = get_image_from_archive(comic.path, image_path)
         if not image_data:
+            logger.error(f"Image {image_path} not found in archive {comic.path}")
             raise HTTPException(status_code=404, detail="Image not found in archive")
+        logger.info(f"Successfully read image {image_path} from archive {comic.path}")
+        return Response(content=image_data, media_type="image/jpeg")
     except HTTPException as e:
         raise e
     except Exception as e:
         logger.error(f"Error reading image from archive: {e}")
-        raise HTTPException(status_code=500, detail="Error reading image from archive")
-
-    return Response(content=image_data, media_type="image/jpeg")
+        raise HTTPException(status_code=500, detail=f"Error reading image from archive: {str(e)}")
 
 def get_image_from_archive(archive_path, image_path):
     if archive_path.lower().endswith('.zip'):
@@ -294,6 +301,20 @@ def get_image_from_archive(archive_path, image_path):
         except rarfile.Error as e:
             logger.error(f"RAR file error: {e}")
             raise HTTPException(status_code=500, detail="RAR file error")
+    elif archive_path.lower().endswith('.7z'):
+        try:
+            with py7zr.SevenZipFile(archive_path, mode='r') as z:
+                data = z.read([image_path])
+                if image_path in data:
+                    return data[image_path].read()
+                else:
+                    raise HTTPException(status_code=404, detail="Image not found in 7z archive")
+        except py7zr.Bad7zFile as e:
+            logger.error(f"Failed to open 7z file: {e}")
+            raise HTTPException(status_code=500, detail="Failed to open 7z file")
+        except Exception as e:
+            logger.error(f"Error reading from 7z file: {e}")
+            raise HTTPException(status_code=500, detail="Error reading from 7z file")
     else:
         return None
 
@@ -313,7 +334,7 @@ async def redirect_to_comic(comic_id: str, request: Request, db: Session = Depen
     return RedirectResponse(url=f"/reader/{comic.id}")
 
 def is_archive(file_path):
-    return file_path.lower().endswith(('.zip', '.rar'))
+    return file_path.lower().endswith(('.zip', '.rar', '.7z'))
 
 def update_comics_db(db: Session, library: Library, parent_id=None, current_path=None):
     if current_path is None:
