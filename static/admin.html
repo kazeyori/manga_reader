@@ -15,6 +15,7 @@
         <input type="text" id="libraryName" placeholder="资料库名称" required>
         <input type="text" id="folderName" placeholder="文件夹名称" required>
         <button type="submit">添加资料库</button>
+        <button id="refreshButton">刷新数据库和缓存</button>
     </form>
 
     <!-- 资料库列表 -->
@@ -70,6 +71,18 @@
                 .catch(error => console.error('添加资料库失败:', error));
         };
 
+        document.getElementById('refreshButton').addEventListener('click', function() {
+            fetch('/admin/refresh', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.message);
+                    // 可以在这里添加刷新页面的逻辑，如果需要的话
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('刷新失败，请查看控制台获取详细信息');
+                });
+        });
         // 页面加载时获取资料库列表
         getLibraries();
     </script>

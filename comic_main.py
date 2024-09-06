@@ -129,6 +129,9 @@ async def add_library(library: LibraryCreate, db: Session = Depends(get_db)):
         db.commit()
         raise HTTPException(status_code=500, detail="Failed to mount comic folder")
     
+    # 在成功添加库后刷新数据库和缓存
+    await refresh_database_and_cache(db)
+    
     logger.info(f"Successfully added library: {library.name} at {full_path}")
     return {"status": "success", "message": "Library added successfully"}
 
@@ -516,8 +519,68 @@ async def delete_library(library_id: int, db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Failed to unmount comic folder: {library.name}. Error: {str(e)}")
     
+    # 在成功删除库后刷新数据库和缓存
+    await refresh_database_and_cache(db)
+    
     logger.info(f"Successfully deleted library: {library.name}")
     return {"status": "success", "message": "Library deleted successfully"}
+
+# 新增刷新数据库和缓存的函数
+async def refresh_database_and_cache(db: Session):
+    # 获取所有库
+    libraries = db.query(Library).all()
+    
+    # 用于存储所有有效的漫画ID
+    valid_comic_ids = set()
+    
+    for library in libraries:
+        # 更新每个库的漫画数据，并获取有效的漫画ID
+        valid_ids = update_comics_db(db, library)
+        valid_comic_ids.update(valid_ids)
+    
+    # 删除不再存在的漫画记录
+    db.query(Comic).filter(Comic.id.notin_(valid_comic_ids)).delete(synchronize_session='fetch')
+    
+    # 清除缓存
+    if os.path.exists(CACHE_FILE):
+        os.remove(CACHE_FILE)
+    
+    db.commit()
+    logger.info("Database and cache refreshed")
+
+def update_comics_db(db: Session, library: Library, parent_id=None, current_path=None):
+    if current_path is None:
+        current_path = library.path
+    
+    logger.info(f"Updating comics for path: {current_path}")
+    
+    valid_comic_ids = set()
+    
+    for item in os.listdir(current_path):
+        item_path = os.path.join(current_path, item)
+        relative_path = os.path.relpath(item_path, library.path)
+        
+        if os.path.isdir(item_path) or is_archive(item_path):
+            existing_comic = db.query(Comic).filter(Comic.title == relative_path, Comic.library_id == library.id).first()
+            if not existing_comic:
+                comic = Comic(title=relative_path, path=item_path, library_id=library.id, parent_id=parent_id, is_archive=is_archive(item_path))
+                db.add(comic)
+                db.flush()
+                logger.info(f"Added new comic: {relative_path} with id {comic.id}, is_archive: {comic.is_archive}")
+            else:
+                comic = existing_comic
+                comic.is_archive = is_archive(item_path)  # 更新现有记录的 is_archive 字段
+                logger.info(f"Updated existing comic: {relative_path} with id {comic.id}, is_archive: {comic.is_archive}")
+            
+            valid_comic_ids.add(comic.id)
+            
+            if os.path.isdir(item_path):
+                # 递归处理子文件夹，并合并有效的漫画ID
+                valid_comic_ids.update(update_comics_db(db, library, parent_id=comic.id, current_path=item_path))
+            elif is_archive(item_path):
+                create_archive_index(item_path)
+    
+    return valid_comic_ids
 
 # 添加一个新的路由来处理子文件夹
 @app.get("/comics/{library_name}/{comic_title:path}")
@@ -556,6 +619,11 @@ async def debug_all_comics(db: Session = Depends(get_db)):
 
 # 设置 UnRAR 工具的路径
 rarfile.UNRAR_TOOL = r"C:\Program Files\WinRAR\UnRAR.exe"  # 根据你的实际安装路径调整
+
+@app.post("/admin/refresh")
+async def manual_refresh(db: Session = Depends(get_db)):
+    await refresh_database_and_cache(db)
+    return {"status": "success", "message": "Database and cache refreshed successfully"}
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
