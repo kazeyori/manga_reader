@@ -74,7 +74,7 @@ class LibraryCreate(BaseModel):
 async def add_library(library: LibraryCreate, db: Session = Depends(get_db)):
     logger.info(f"Received request to add library: {library.name} with folder {library.folderName}")
     
-    base_path = "E:/PythonProject/manga_reader/comics"  # 确保这个路径是正确的
+    base_path = "./comics"  # 确保这个路径是正确的
     full_path = os.path.normpath(os.path.join(base_path, library.folderName))
     
     logger.info(f"Base path: {base_path}")
